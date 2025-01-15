@@ -23,13 +23,17 @@ Table 4.1 Hardware Requirements
 
 The ESP32 is the central microcontroller used in the system. It is a powerful, dual-core processor with integrated Wi-Fi and Bluetooth capabilities. The ESP32 enables real-time processing of sensor data and ensures seamless communication between the system components and the monitoring platform. It plays a key role in collecting data from sensors such as the earth leakage current sensor and transmitting it over the internet for remote monitoring.
  
- 
+
+ ![image](https://github.com/user-attachments/assets/53f1c2ae-e62e-42ab-83bb-d40055116a81)
+
 Fig. 4.1 ESP32 GPIO pinout
 
 4.1.2	ZMPT101B Voltage Sensor
 
 The ZMPT101B is a voltage sensor module designed for measuring AC voltage. It detects variations in the electrical system, such as voltage spikes or drops, and helps assess the health of the earthing system. By integrating this sensor, the system can monitor fluctuations in the electrical network and ensure the earthing system remains within safe operational parameters.
 
+
+![image](https://github.com/user-attachments/assets/8f40529a-969e-416a-a96f-38f7e963e856)
 
 Fig.4.2 ZMPT101B Voltage Sensor
 
@@ -40,6 +44,8 @@ Fig.4.2 ZMPT101B Voltage Sensor
 The ACS712 is a current sensor used to measure the leakage current in the system. It is based on the Hall Effect and provides precise current readings in both AC and DC circuits. In your earthing monitoring system, the ACS712 detects earth leakage current, ensuring the earthing system is functioning correctly and alerting the maintenance team in deviations
  
  
+
+![image](https://github.com/user-attachments/assets/493bb2d3-b89d-49a9-bbe7-82fcdb0fd902)
 
      Fig. 4.3-ACS712 current Sensor
 
@@ -52,6 +58,8 @@ The Soil Moisture Sensor is used to monitor the soil's moisture content, which c
 
                                                       
 
+![image](https://github.com/user-attachments/assets/1b80ed6b-bdaf-424a-855c-e72fde8463e0)
+
 
 
 
@@ -63,6 +71,8 @@ The Soil Moisture Sensor is used to monitor the soil's moisture content, which c
 The 16x2 LCD display with I2C communication is used to provide a user interface for the earthing system. It displays real-time data such as earth resistance, leakage current, and the system’s health status.
  
 
+
+![image](https://github.com/user-attachments/assets/ab531db9-8e27-4878-aae2-6faa22f81da8)
 
 
 
@@ -130,6 +140,8 @@ processes, ensuring the seamless integration of hardware and software components
 The evolution of the IoT-based earthing monitoring system reflects a thoughtful and deliberate process of integrating modern technology to address critical challenges in electrical safety. From the initial concept to deployment, the solution has continuously improved in terms of accuracy, reliability, and user experience. As the system matures, it aligns with broader trends in smart infrastructure, contributing to safer, more efficient, and sustainable electrical system.
 
 
+![image](https://github.com/user-attachments/assets/c3b02905-427a-4f9b-b2f3-1ec4b133e571)
+
 Fig.4.7 Circuit Diagram used in the project
 
 
@@ -137,6 +149,9 @@ Fig.4.7 Circuit Diagram used in the project
 4.3.1	Trigger Mechanism and Data Processing
 
 The trigger mechanism of the IoT-based earthing monitoring system detects anomalies in earth leakage current, voltage, and soil moisture using sensors like the ZMPT101B and ACS712. When values exceed thresholds, the system triggers alarms through a 5V Buzzer and 5mm LED indicators. The ESP32 microcontroller processes the data from sensors, converting analog signals with the ADC0809. If faults are detected, the system displays the information on the 16x2 I2C LCD and sends it to a cloud platform for remote monitoring. This ensures real-time monitoring and quick response to maintain system safety and efficiency.
+
+![image](https://github.com/user-attachments/assets/a863cbe0-dad9-4c0d-8094-35dcd6458c72)
+
 
 4.3.2	Audible Alert and User Interface
 
@@ -165,3 +180,9 @@ Additionally, the system allows users to download the captured snapshots. This f
 4.3.5	Live Feed Functionality
 
 The Live Feed Functionality in the IoT-based earthing monitoring system provides real-time updates on the system's status and performance. Using the ESP32 microcontroller, the system continuously collects data from the ZMPT101B voltage sensor, ACS712 current sensor, and soil moisture sensor, and processes it for immediate analysis.
+
+
+Prototype
+
+![image](https://github.com/user-attachments/assets/7fd8861c-030c-4e31-af17-9191f6301084)
+
