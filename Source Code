@@ -1,0 +1,248 @@
+#include <Filters.h>
+#include <LiquidCrystal_I2C.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WebServer.h>
+#include <WebSocketsServer.h>
+
+WebServer server(80);
+WebSocketsServer webSocket = WebSocketsServer(81);
+
+// Constants
+const int sensorPin = 34; // Voltage sensor
+const int sensorIn = 35;  // Current sensor
+const int AOUT_PIN = 32;  // Moisture sensor
+const int mVperAmp = 185;
+const unsigned long printPeriod = 1000;
+RunningStatistics inputStats;
+// Moisture Sensor Calibration
+const int MOISTURE_MIN_VALUE = 0;    // Adjust based on your sensor's dry reading
+const int MOISTURE_MAX_VALUE = 4095; // Adjust based on your sensor's wet reading
+
+// WiFi
+const char* ssid = "Soni ji ka Antarjaal";
+const char* password = "arinsoni8";
+
+// Pins for alerts
+#define led1 5
+#define led2 18
+#define led3 4
+#define buzzer 23
+LiquidCrystal_I2C lcd(0x3f, 16,2); 
+
+// Variables
+float intercept = 0.7, slope = 0.04;
+float currents = 0, Voltage = 0, Vrms = 0, Irms = 0;
+int rawSensorValue = 0;
+int moistureValue = 0;
+float smoothedVoltage = 0;
+unsigned long previousMillis = 0;
+RunningStatistics voltageStats;
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected to WiFi. IP: " + WiFi.localIP().toString());
+
+  server.on("/", handleRoot);
+  server.begin();
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+
+  // Initialize pins
+  pinMode(led1, OUTPUT);
+  pinMode(led2, OUTPUT);
+  pinMode(led3, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+
+  // Initialize RunningStatistics for smoothing voltage
+  voltageStats.setWindowSecs(1); // Smoothing over 1 second
+   lcd.init();
+    lcd.backlight();
+    lcd.print("Smart Earthing");
+    lcd.setCursor(0, 1);
+    lcd.print("System");
+    delay(1000);
+    lcd.clear();
+}
+
+void loop() {
+  server.handleClient();
+  webSocket.loop();
+
+  // Read sensor data periodically
+  if (millis() - previousMillis >= printPeriod) {
+    previousMillis = millis();
+    readAndProcessSensor();
+    sendSensorData();
+    handleAlerts();
+  }
+}
+
+void handleRoot() {
+   String html = "<!DOCTYPE html>";
+  html += "<html>";
+  html += "<head>";
+  html += "<title>Earthing System Dashboard</title>";
+  html += "<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css'>";
+  html += "<style>";
+  html += "  * { margin: 0; padding: 0; box-sizing: border-box; }";
+  html += "  body { font-family: 'Arial', sans-serif; background: linear-gradient(to bottom, #4facfe, #00f2fe); color: #fff; text-align: center; padding: 20px; }";
+  html += "  h1 { margin-bottom: 20px; font-size: 2.5em; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3); }";
+  html += "  #data, #alerts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; max-width: 1000px; margin: 0 auto; margin-top: 30px; }";
+  html += "  .card { background: rgba(255, 255, 255, 0.2); border-radius: 15px; padding: 20px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3); transition: transform 0.3s ease, box-shadow 0.3s ease; }";
+  html += "  .card:hover { transform: translateY(-10px); box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4); }";
+  html += "  .card i { font-size: 2em; margin-bottom: 10px; color: #ffd700; }";
+  html += "  .card h3 { margin: 10px 0; font-size: 1.5em; }";
+  html += "  .card p { font-size: 1.2em; }";
+  html += "  footer { margin-top: 30px; font-size: 0.9em; color: #eee; }";
+  html += "</style>";
+  html += "<script>";
+  html += "  var ws = new WebSocket('ws://' + location.hostname + ':81/');";
+  html += "  ws.onmessage = function(event) {";
+  html += "    var message = JSON.parse(event.data);";
+  html += "    document.getElementById('data').innerHTML = message.sensors;";
+  html += "    document.getElementById('alerts').innerHTML = message.alerts;";
+  html += "  };";
+  html += "</script>";
+  html += "</head>";
+  html += "<body>";
+  html += "<h1>Earthing System Dashboard</h1>";
+  html += "<div id='data'></div>";
+  html += "<h2>Alerts</h2>";
+  html += "<div id='alerts'>No Alerts</div>";
+  html += "<footer>&copy; ARIN SONI | Designed For Precision Monitoring </footer>";
+  html += "</body>";
+  html += "</html>";
+
+  server.send(200, "text/html", html);
+}
+
+void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
+  if (type == WStype_TEXT) {
+    Serial.printf("[%u] get Text: %s\n", num, payload);
+  }
+}
+
+// Function: Read and Process Sensor Data
+void readAndProcessSensor() {
+  rawSensorValue = analogRead(sensorPin);
+  inputStats.input(rawSensorValue);
+  currents = intercept + slope * inputStats.sigma();
+  currents = currents * 31.3231 + 172;
+
+  Voltage = getVPP();
+  voltageStats.input(Voltage); // Add raw Voltage to smoothing filter
+  smoothedVoltage = voltageStats.mean(); // Get smoothed Voltage
+  Vrms = (smoothedVoltage / 2.0) * 0.707;
+  Irms = ((Vrms * 1000) / mVperAmp) - 1.2 * 0.50;
+
+  int rawMoisture = analogRead(AOUT_PIN);
+  moistureValue = map(rawMoisture, MOISTURE_MIN_VALUE, MOISTURE_MAX_VALUE, 0, 100);
+  moistureValue = constrain(moistureValue, 0, 100); // Ensure value is within 0-100
+
+  Serial.println("===== Sensor Readings =====");
+  Serial.print("Raw Sensor Value: "); Serial.println(rawSensorValue);
+  Serial.print("Smoothed Voltage: "); Serial.println(smoothedVoltage);
+  Serial.print("Moisture Value (%): "); Serial.println(moistureValue);
+  Serial.print("Currents: "); Serial.println(currents);
+  Serial.print("Vrms: "); Serial.println(Vrms);
+  Serial.print("Irms: "); Serial.println(Irms);
+  Serial.println("===========================");
+  lcd.setCursor(0, 0);
+    lcd.print(Irms);
+    lcd.print(" Amps ");
+
+    lcd.setCursor(0, 1);
+    lcd.print(currents);
+    lcd.print(" Volts ");
+
+    lcd.setCursor(11, 0);
+    lcd.print(moistureValue);
+    lcd.setCursor(14, 0);
+    lcd.print("%");
+}
+
+void sendSensorData() {
+  if (isnan(Irms) || isnan(currents) || isnan(moistureValue)) {
+    Serial.println("Failed to read from sensor!");
+    return;
+  }
+
+  // Sensor data
+  String sensorData = "<div><i class='fas fa-bolt'></i> Voltage: " + String(currents) + "V</div>";
+  sensorData += "<div><i class='fas fa-wave-square'></i> RMS Voltage: " + String(Vrms) + "V</div>";
+  sensorData += "<div><i class='fas fa-circle-arrow-right'></i> RMS Current: " + String(Irms) + "A</div>";
+  sensorData += "<div><i class='fas fa-tint'></i> Moisture: " + String(moistureValue) + "%</div>";
+
+  // Alerts
+  String alertMessages = "";
+  if (Irms < 0.86) {
+    alertMessages += "<div class='card'><i class='fas fa-exclamation-triangle'></i><h3>Fault Detected</h3><p>RMS Voltage: " + String(Vrms) + "V, RMS Current: " + String(Irms) + "A</p></div>";
+  }
+  if (moistureValue <= 50) {
+    alertMessages += "<div class='card'><i class='fas fa-exclamation-circle'></i><h3>Low Moisture</h3><p>Moisture: " + String(moistureValue) + "%</p></div>";
+  }
+  if (alertMessages == "") {
+    alertMessages = "No Alerts";
+  }
+
+  // Combine data and alerts into JSON
+  String message = "{\"sensors\":\"" + sensorData + "\",\"alerts\":\"" + alertMessages + "\"}";
+
+  webSocket.broadcastTXT(message);
+}
+
+void handleAlerts() {
+  if (Irms > 0.90 && Vrms > 218) {
+    digitalWrite(led1, LOW);
+    digitalWrite(led2, LOW);
+  } else if (Irms < 0.85) {
+    digitalWrite(led1, HIGH);
+    digitalWrite(led2, HIGH);
+    digitalWrite(buzzer, HIGH);
+    lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Fault Detected");
+    delay(500);
+    digitalWrite(buzzer, LOW);
+    lcd.clear();
+  } else {
+    digitalWrite(led1, LOW);
+    digitalWrite(led2, LOW);
+  }
+
+  if (moistureValue <= 30) { // Alert if moisture is very low
+    digitalWrite(buzzer, HIGH);
+    digitalWrite(led3, HIGH);
+     lcd.clear();
+        lcd.setCursor(1, 0);
+        lcd.print("Low Moisture");
+    delay(500);
+    lcd.clear();
+    digitalWrite(buzzer, LOW);
+    } else {
+    digitalWrite(buzzer, LOW);
+    digitalWrite(led3, LOW);
+  }
+}
+
+double getVPP() {
+  int readValue = 0, maxValue = 0, minValue = 1024;
+  unsigned long start_time = millis();
+
+  while ((millis() - start_time) < 1000) {
+    readValue = analogRead(sensorIn);
+    if (readValue > maxValue) maxValue = readValue;
+    if (readValue < minValue) minValue = readValue;
+  }
+
+  return ((maxValue - minValue) * 3.3) / 4096.0;
+}
